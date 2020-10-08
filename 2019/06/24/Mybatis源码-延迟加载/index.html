@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="Description摘自Mybatis3官网：  我们有两个 select 查询语句：一个用来加载博客（Blog），另外一个用来加载作者（Author），而且博客的结果映射描述了应该使用 selectAuthor 语句加载它的 author 属性。   其它所有的属性将会被自动加载，只要它们的列名和属性名相匹配。   这种方式虽然很简单，但在大型数据集或大型数据表上表现不佳。这个问题被称为“N+">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Mybatis源码-延迟加载">
+<meta property="og:url" content="http://example.com/2019/06/24/Mybatis%E6%BA%90%E7%A0%81-%E5%BB%B6%E8%BF%9F%E5%8A%A0%E8%BD%BD/index.html">
+<meta property="og:site_name" content="怒吃树的博客">
+<meta property="og:description" content="Description摘自Mybatis3官网：  我们有两个 select 查询语句：一个用来加载博客（Blog），另外一个用来加载作者（Author），而且博客的结果映射描述了应该使用 selectAuthor 语句加载它的 author 属性。   其它所有的属性将会被自动加载，只要它们的列名和属性名相匹配。   这种方式虽然很简单，但在大型数据集或大型数据表上表现不佳。这个问题被称为“N+">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="http://pt1160j8s.bkt.clouddn.com/lazyloading_property.png">
+<meta property="og:image" content="http://pt1160j8s.bkt.clouddn.com/mybatis_lazyloader_resultloader_sequence.png">
+<meta property="article:published_time" content="2019-06-24T08:31:32.000Z">
+<meta property="article:modified_time" content="2020-10-08T11:38:11.540Z">
+<meta property="article:author" content="Roger Meng">
+<meta property="article:tag" content="源码">
+<meta property="article:tag" content="Mybatis">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://pt1160j8s.bkt.clouddn.com/lazyloading_property.png">
+
+<link rel="canonical" href="http://example.com/2019/06/24/Mybatis%E6%BA%90%E7%A0%81-%E5%BB%B6%E8%BF%9F%E5%8A%A0%E8%BD%BD/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'en'
+  };
+</script>
+
+  <title>Mybatis源码-延迟加载 | 怒吃树的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Toggle navigation bar">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">怒吃树的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">好好学习，天天向上</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>Home</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2019/06/24/Mybatis%E6%BA%90%E7%A0%81-%E5%BB%B6%E8%BF%9F%E5%8A%A0%E8%BD%BD/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Roger Meng">
+      <meta itemprop="description" content="给我点学习的动力">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="怒吃树的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Mybatis源码-延迟加载
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2019-06-24 16:31:32" itemprop="dateCreated datePublished" datetime="2019-06-24T16:31:32+08:00">2019-06-24</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2020-10-08 19:38:11" itemprop="dateModified" datetime="2020-10-08T19:38:11+08:00">2020-10-08</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="Description"><a href="#Description" class="headerlink" title="Description"></a>Description</h1><p>摘自Mybatis3官网：</p>
+<blockquote>
+<p>我们有两个 select 查询语句：一个用来加载博客（Blog），另外一个用来加载作者（Author），而且博客的结果映射描述了应该使用 selectAuthor 语句加载它的 author 属性。</p>
+</blockquote>
+<blockquote>
+<p>其它所有的属性将会被自动加载，只要它们的列名和属性名相匹配。</p>
+</blockquote>
+<blockquote>
+<p>这种方式虽然很简单，但在大型数据集或大型数据表上表现不佳。这个问题被称为“N+1 查询问题”。 概括地讲，N+1 查询问题是这样子的：</p>
+</blockquote>
+<blockquote>
+<p><strong>你执行了一个单独的 SQL 语句来获取结果的一个列表（就是“+1”）。</strong><br><strong>对列表返回的每条记录，你执行一个 select 查询语句来为每条记录加载详细信息（就是“N”）。</strong><br><strong>这个问题会导致成百上千的 SQL 语句被执行。有时候，我们不希望产生这样的后果。</strong></p>
+</blockquote>
+<blockquote>
+<p>MyBatis 能够对这样的查询进行延迟加载，因此可以将大量语句同时运行的开销分散开来。</p>
+</blockquote>
+<p>延迟加载指按照指定的延迟规则来推迟关联查询的执行时间以达到提升数据库查询性能的目的；也可以理解为将多表关联查询语句拆分为多个单表查询语句，在需要返回数据时执行对应的语句。<br><img src="http://pt1160j8s.bkt.clouddn.com/lazyloading_property.png"></p>
+<p>开启aggressiveLazyLoading会在任何方法调用时触发加载；而开启lazyLoadingEnabled会使关联对象按需加载，这个配置会在后续的源码中体现。</p>
+<h1 id="Source-Code"><a href="#Source-Code" class="headerlink" title="Source Code"></a>Source Code</h1><h2 id="DEBUG"><a href="#DEBUG" class="headerlink" title="DEBUG"></a>DEBUG</h2><p>Mybatis的源码中有专门基于LazyLoader的测试类来帮助我们进行DEBUG。<br>@: org.apache.ibatis.submitted.lazyload_common_property</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">&lt;!DOCTYPE <span class="meta-keyword">mapper</span></span></span><br><span class="line"><span class="meta">    <span class="meta-keyword">PUBLIC</span> <span class="meta-string">&quot;-//mybatis.org//DTD Mapper 3.0//EN&quot;</span></span></span><br><span class="line"><span class="meta">    <span class="meta-string">&quot;http://mybatis.org/dtd/mybatis-3-mapper.dtd&quot;</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">mapper</span> <span class="attr">namespace</span>=<span class="string">&quot;org.apache.ibatis.submitted.lazyload_common_property.ChildMapper&quot;</span>&gt;</span></span><br><span class="line">    </span><br><span class="line">    <span class="tag">&lt;<span class="name">resultMap</span> <span class="attr">id</span>=<span class="string">&quot;ChildMap&quot;</span> <span class="attr">type</span>=<span class="string">&quot;Child&quot;</span>&gt;</span></span><br><span class="line">        <span class="tag">&lt;<span class="name">id</span> <span class="attr">property</span>=<span class="string">&quot;id&quot;</span> <span class="attr">column</span>=<span class="string">&quot;id&quot;</span>/&gt;</span></span><br><span class="line">        <span class="tag">&lt;<span class="name">result</span> <span class="attr">property</span>=<span class="string">&quot;name&quot;</span> <span class="attr">column</span>=<span class="string">&quot;name&quot;</span>/&gt;</span></span><br><span class="line">        <span class="tag">&lt;<span class="name">association</span> <span class="attr">property</span>=<span class="string">&quot;father&quot;</span> <span class="attr">column</span>=<span class="string">&quot;father_id&quot;</span> <span class="attr">select</span>=<span class="string">&quot;org.apache.ibatis.submitted.lazyload_common_property.FatherMapper.selectById&quot;</span>/&gt;</span></span><br><span class="line">        <span class="tag">&lt;<span class="name">association</span> <span class="attr">property</span>=<span class="string">&quot;grandFather&quot;</span> <span class="attr">column</span>=<span class="string">&quot;grand_father_id&quot;</span> <span class="attr">select</span>=<span class="string">&quot;org.apache.ibatis.submitted.lazyload_common_property.GrandFatherMapper.selectById&quot;</span>/&gt;</span></span><br><span class="line">    <span class="tag">&lt;/<span class="name">resultMap</span>&gt;</span></span><br><span class="line">    </span><br><span class="line">    </span><br><span class="line">    <span class="tag">&lt;<span class="name">select</span> <span class="attr">id</span>=<span class="string">&quot;selectById&quot;</span> <span class="attr">resultMap</span>=<span class="string">&quot;ChildMap&quot;</span> <span class="attr">parameterType</span>=<span class="string">&quot;int&quot;</span>&gt;</span></span><br><span class="line">    	SELECT id, name, father_id, grand_father_id</span><br><span class="line">    	FROM Child</span><br><span class="line">    	WHERE id = #&#123;id&#125;</span><br><span class="line">    <span class="tag">&lt;/<span class="name">select</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">mapper</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<h2 id="Code-Analysis"><a href="#Code-Analysis" class="headerlink" title="Code Analysis"></a>Code Analysis</h2><figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">private <span class="built_in">Object</span> getRowValue(ResultSetWrapper rsw, ResultMap resultMap, <span class="built_in">String</span> columnPrefix) throws SQLException &#123;</span><br><span class="line">  final ResultLoaderMap lazyLoader = <span class="keyword">new</span> ResultLoaderMap();</span><br><span class="line">  <span class="built_in">Object</span> rowValue = createResultObject(rsw, resultMap, lazyLoader, columnPrefix);</span><br><span class="line">  <span class="keyword">if</span> (rowValue != <span class="literal">null</span> &amp;&amp; !hasTypeHandlerForResultObject(rsw, resultMap.getType())) &#123;</span><br><span class="line">    final MetaObject metaObject = configuration.newMetaObject(rowValue);</span><br><span class="line">    boolean foundValues = <span class="built_in">this</span>.useConstructorMappings;</span><br><span class="line">    <span class="keyword">if</span> (shouldApplyAutomaticMappings(resultMap, <span class="literal">false</span>)) &#123;</span><br><span class="line">      foundValues = applyAutomaticMappings(rsw, resultMap, metaObject, columnPrefix) || foundValues;</span><br><span class="line">    &#125;</span><br><span class="line">    foundValues = applyPropertyMappings(rsw, resultMap, metaObject, lazyLoader, columnPrefix) || foundValues;</span><br><span class="line">    foundValues = lazyLoader.size() &gt; <span class="number">0</span> || foundValues;</span><br><span class="line">    rowValue = foundValues || configuration.isReturnInstanceForEmptyRow() ? rowValue : <span class="literal">null</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> rowValue;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从getRowValue开始跟，只看和延迟加载相关的部分：</p>
+<ol>
+<li>createResultObject初始化Mapper配置的对应Bean</li>
+</ol>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">private <span class="built_in">Object</span> createResultObject(ResultSetWrapper rsw, ResultMap resultMap, ResultLoaderMap lazyLoader, <span class="built_in">String</span> columnPrefix) throws SQLException &#123;</span><br><span class="line">  <span class="built_in">this</span>.useConstructorMappings = <span class="literal">false</span>; <span class="comment">// reset previous mapping result</span></span><br><span class="line">  final List&lt;Class&lt;?&gt;&gt; constructorArgTypes = <span class="keyword">new</span> ArrayList&lt;&gt;();</span><br><span class="line">  final List&lt;<span class="built_in">Object</span>&gt; constructorArgs = <span class="keyword">new</span> ArrayList&lt;&gt;();</span><br><span class="line">  <span class="built_in">Object</span> resultObject = createResultObject(rsw, resultMap, constructorArgTypes, constructorArgs, columnPrefix);</span><br><span class="line">  <span class="keyword">if</span> (resultObject != <span class="literal">null</span> &amp;&amp; !hasTypeHandlerForResultObject(rsw, resultMap.getType())) &#123;</span><br><span class="line">    final List&lt;ResultMapping&gt; propertyMappings = resultMap.getPropertyResultMappings();</span><br><span class="line">    <span class="keyword">for</span> (ResultMapping propertyMapping : propertyMappings) &#123;</span><br><span class="line">      <span class="comment">// issue gcode #109 &amp;&amp; issue #149</span></span><br><span class="line">      <span class="keyword">if</span> (propertyMapping.getNestedQueryId() != <span class="literal">null</span> &amp;&amp; propertyMapping.isLazy()) &#123;</span><br><span class="line">        resultObject = configuration.getProxyFactory().createProxy(resultObject, lazyLoader, configuration, objectFactory, constructorArgTypes, constructorArgs);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="built_in">this</span>.useConstructorMappings = resultObject != <span class="literal">null</span> &amp;&amp; !constructorArgTypes.isEmpty(); <span class="comment">// set current mapping result</span></span><br><span class="line">  <span class="keyword">return</span> resultObject;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>当resultMap的propertyMappings的任一propertyMapping存在关联查询且开启延迟加载，Mybatis会为该resultObject创建动态代理拦截调取该Bean的方法进行延迟加载处理。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line">public <span class="built_in">Object</span> invoke(<span class="built_in">Object</span> enhanced, Method method, Method methodProxy, <span class="built_in">Object</span>[] args) throws Throwable &#123;</span><br><span class="line">  final <span class="built_in">String</span> methodName = method.getName();</span><br><span class="line">  <span class="keyword">try</span> &#123;</span><br><span class="line">    synchronized (lazyLoader) &#123;</span><br><span class="line">      <span class="keyword">if</span> (WRITE_REPLACE_METHOD.equals(methodName)) &#123;</span><br><span class="line">        <span class="built_in">Object</span> original;</span><br><span class="line">        <span class="keyword">if</span> (constructorArgTypes.isEmpty()) &#123;</span><br><span class="line">          original = objectFactory.create(type);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">          original = objectFactory.create(type, constructorArgTypes, constructorArgs);</span><br><span class="line">        &#125;</span><br><span class="line">        PropertyCopier.copyBeanProperties(type, enhanced, original);</span><br><span class="line">        <span class="keyword">if</span> (lazyLoader.size() &gt; <span class="number">0</span>) &#123;</span><br><span class="line">          <span class="keyword">return</span> <span class="keyword">new</span> JavassistSerialStateHolder(original, lazyLoader.getProperties(), objectFactory, constructorArgTypes, constructorArgs);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">          <span class="keyword">return</span> original;</span><br><span class="line">        &#125;</span><br><span class="line">      &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (lazyLoader.size() &gt; <span class="number">0</span> &amp;&amp; !FINALIZE_METHOD.equals(methodName)) &#123;</span><br><span class="line">          System.out.println(<span class="string">&quot;Size of LazyLoader Map:&quot;</span> + lazyLoader.size());</span><br><span class="line">          <span class="keyword">if</span> (aggressive || lazyLoadTriggerMethods.contains(methodName)) &#123;</span><br><span class="line">            lazyLoader.loadAll();</span><br><span class="line">          &#125; <span class="keyword">else</span> <span class="keyword">if</span> (PropertyNamer.isSetter(methodName)) &#123;</span><br><span class="line">            final <span class="built_in">String</span> property = PropertyNamer.methodToProperty(methodName);</span><br><span class="line">            lazyLoader.remove(property);</span><br><span class="line">          &#125; <span class="keyword">else</span> <span class="keyword">if</span> (PropertyNamer.isGetter(methodName)) &#123;</span><br><span class="line">            final <span class="built_in">String</span> property = PropertyNamer.methodToProperty(methodName);</span><br><span class="line">            <span class="keyword">if</span> (lazyLoader.hasLoader(property)) &#123;</span><br><span class="line">              lazyLoader.load(property);</span><br><span class="line">            &#125;</span><br><span class="line">          &#125;</span><br><span class="line">        &#125;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> methodProxy.invoke(enhanced, args);</span><br><span class="line">  &#125; <span class="keyword">catch</span> (Throwable t) &#123;</span><br><span class="line">    <span class="keyword">throw</span> ExceptionUtil.unwrapThrowable(t);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line">  &#125;</span><br></pre></td></tr></table></figure>
+<p>invoke时会同步代码块，因为lazyLoader里面是HashMap,线程不安全；<br>判断lazyLoader的size，如果开启agressiveLazyLoading，则方法被调用时直接load lazyLoaderMap里面所有的延迟加载项；<br>如果是Setter方法则与延迟加载无关，直接删掉；<br>如果是Getter则根据指定的方法调用加载对应的关联查询；</p>
+<p>OK，其实大致的逻辑就是这样，那么LazyLoader这个东西是什么时候初始化的呢？现在跳回getRowValue，分析另一个比较重要的方法applyPropertyMappings。<br>2. applyPropertyMappings为对应属性赋值</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line">private boolean applyPropertyMappings(ResultSetWrapper rsw, ResultMap resultMap, MetaObject metaObject, ResultLoaderMap lazyLoader, <span class="built_in">String</span> columnPrefix)</span><br><span class="line">    throws SQLException &#123;</span><br><span class="line">  final List&lt;<span class="built_in">String</span>&gt; mappedColumnNames = rsw.getMappedColumnNames(resultMap, columnPrefix);</span><br><span class="line">  boolean foundValues = <span class="literal">false</span>;</span><br><span class="line">  final List&lt;ResultMapping&gt; propertyMappings = resultMap.getPropertyResultMappings();</span><br><span class="line">  <span class="keyword">for</span> (ResultMapping propertyMapping : propertyMappings) &#123;</span><br><span class="line">    <span class="built_in">String</span> column = prependPrefix(propertyMapping.getColumn(), columnPrefix);</span><br><span class="line">    <span class="keyword">if</span> (propertyMapping.getNestedResultMapId() != <span class="literal">null</span>) &#123;</span><br><span class="line">      <span class="comment">// the user added a column attribute to a nested result map, ignore it</span></span><br><span class="line">      column = <span class="literal">null</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (propertyMapping.isCompositeResult()</span><br><span class="line">        || (column != <span class="literal">null</span> &amp;&amp; mappedColumnNames.contains(column.toUpperCase(Locale.ENGLISH)))</span><br><span class="line">        || propertyMapping.getResultSet() != <span class="literal">null</span>) &#123;</span><br><span class="line">      <span class="built_in">Object</span> value = getPropertyMappingValue(rsw.getResultSet(), metaObject, propertyMapping, lazyLoader, columnPrefix);</span><br><span class="line">      <span class="comment">// issue #541 make property optional</span></span><br><span class="line">      final <span class="built_in">String</span> property = propertyMapping.getProperty();</span><br><span class="line">      <span class="keyword">if</span> (property == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">continue</span>;</span><br><span class="line">      &#125; <span class="keyword">else</span> <span class="keyword">if</span> (value == DEFERED) &#123;</span><br><span class="line">        foundValues = <span class="literal">true</span>;</span><br><span class="line">        <span class="keyword">continue</span>;</span><br><span class="line">      &#125;</span><br><span class="line">      <span class="keyword">if</span> (value != <span class="literal">null</span>) &#123;</span><br><span class="line">        foundValues = <span class="literal">true</span>;</span><br><span class="line">      &#125;</span><br><span class="line">      <span class="keyword">if</span> (value != <span class="literal">null</span> || (configuration.isCallSettersOnNulls() &amp;&amp; !metaObject.getSetterType(property).isPrimitive())) &#123;</span><br><span class="line">        <span class="comment">// gcode issue #377, call setter on nulls (value is not &#x27;found&#x27;)</span></span><br><span class="line">        metaObject.setValue(property, value);</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> foundValues;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>直接跳进getPropertyMappingValue；</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">private <span class="built_in">Object</span> getPropertyMappingValue(ResultSet rs, MetaObject metaResultObject, ResultMapping propertyMapping, ResultLoaderMap lazyLoader, <span class="built_in">String</span> columnPrefix)</span><br><span class="line">    throws SQLException &#123;</span><br><span class="line">  <span class="keyword">if</span> (propertyMapping.getNestedQueryId() != <span class="literal">null</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> getNestedQueryMappingValue(rs, metaResultObject, propertyMapping, lazyLoader, columnPrefix);</span><br><span class="line">  &#125; <span class="keyword">else</span> <span class="keyword">if</span> (propertyMapping.getResultSet() != <span class="literal">null</span>) &#123;</span><br><span class="line">    addPendingChildRelation(rs, metaResultObject, propertyMapping);   <span class="comment">// TODO is that OK?</span></span><br><span class="line">    <span class="keyword">return</span> DEFERED;</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    final TypeHandler&lt;?&gt; typeHandler = propertyMapping.getTypeHandler();</span><br><span class="line">    final <span class="built_in">String</span> column = prependPrefix(propertyMapping.getColumn(), columnPrefix);</span><br><span class="line">    <span class="keyword">return</span> typeHandler.getResult(rs, column);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>继续跳进getNestedQueryMappingValue；</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">private <span class="built_in">Object</span> getNestedQueryMappingValue(ResultSet rs, MetaObject metaResultObject, ResultMapping propertyMapping, ResultLoaderMap lazyLoader, <span class="built_in">String</span> columnPrefix)</span><br><span class="line">    throws SQLException &#123;</span><br><span class="line">  final <span class="built_in">String</span> nestedQueryId = propertyMapping.getNestedQueryId();</span><br><span class="line">  final <span class="built_in">String</span> property = propertyMapping.getProperty();</span><br><span class="line">  final MappedStatement nestedQuery = configuration.getMappedStatement(nestedQueryId);</span><br><span class="line">  final Class&lt;?&gt; nestedQueryParameterType = nestedQuery.getParameterMap().getType();</span><br><span class="line">  final <span class="built_in">Object</span> nestedQueryParameterObject = prepareParameterForNestedQuery(rs, propertyMapping, nestedQueryParameterType, columnPrefix);</span><br><span class="line">  <span class="built_in">Object</span> value = <span class="literal">null</span>;</span><br><span class="line">  <span class="keyword">if</span> (nestedQueryParameterObject != <span class="literal">null</span>) &#123;</span><br><span class="line">    final BoundSql nestedBoundSql = nestedQuery.getBoundSql(nestedQueryParameterObject);</span><br><span class="line">    final CacheKey key = executor.createCacheKey(nestedQuery, nestedQueryParameterObject, RowBounds.DEFAULT, nestedBoundSql);</span><br><span class="line">    final Class&lt;?&gt; targetType = propertyMapping.getJavaType();</span><br><span class="line">    <span class="keyword">if</span> (executor.isCached(nestedQuery, key)) &#123;</span><br><span class="line">      executor.deferLoad(nestedQuery, metaResultObject, property, key, targetType);</span><br><span class="line">      value = DEFERED;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      final ResultLoader resultLoader = <span class="keyword">new</span> ResultLoader(configuration, executor, nestedQuery, nestedQueryParameterObject, targetType, key, nestedBoundSql);</span><br><span class="line">      <span class="keyword">if</span> (propertyMapping.isLazy()) &#123;</span><br><span class="line">        lazyLoader.addLoader(property, metaResultObject, resultLoader);</span><br><span class="line">        value = DEFERED;</span><br><span class="line">      &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        value = resultLoader.loadResult();</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> value;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>看到了我们在上面引用到的LazyLoader，当延迟加载开启时，LazyLoader会把对应的属性meta信息存到内部的HashMap中，在方法被invoke时执行对应的Load操作；</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line">public <span class="keyword">void</span> load() throws SQLException &#123;</span><br><span class="line">  <span class="comment">/* These field should not be null unless the loadpair was serialized.</span></span><br><span class="line"><span class="comment">   * Yet in that case this method should not be called. */</span></span><br><span class="line">  <span class="keyword">if</span> (<span class="built_in">this</span>.metaResultObject == <span class="literal">null</span>) &#123;</span><br><span class="line">    <span class="keyword">throw</span> <span class="keyword">new</span> IllegalArgumentException(<span class="string">&quot;metaResultObject is null&quot;</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">if</span> (<span class="built_in">this</span>.resultLoader == <span class="literal">null</span>) &#123;</span><br><span class="line">    <span class="keyword">throw</span> <span class="keyword">new</span> IllegalArgumentException(<span class="string">&quot;resultLoader is null&quot;</span>);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="built_in">this</span>.load(<span class="literal">null</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">public <span class="keyword">void</span> load(final <span class="built_in">Object</span> userObject) throws SQLException &#123;</span><br><span class="line">  <span class="keyword">if</span> (<span class="built_in">this</span>.metaResultObject == <span class="literal">null</span> || <span class="built_in">this</span>.resultLoader == <span class="literal">null</span>) &#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">this</span>.mappedParameter == <span class="literal">null</span>) &#123;</span><br><span class="line">      <span class="keyword">throw</span> <span class="keyword">new</span> ExecutorException(<span class="string">&quot;Property [&quot;</span> + <span class="built_in">this</span>.property + <span class="string">&quot;] cannot be loaded because &quot;</span></span><br><span class="line">              + <span class="string">&quot;required parameter of mapped statement [&quot;</span></span><br><span class="line">              + <span class="built_in">this</span>.mappedStatement + <span class="string">&quot;] is not serializable.&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    final Configuration config = <span class="built_in">this</span>.getConfiguration();</span><br><span class="line">    final MappedStatement ms = config.getMappedStatement(<span class="built_in">this</span>.mappedStatement);</span><br><span class="line">    <span class="keyword">if</span> (ms == <span class="literal">null</span>) &#123;</span><br><span class="line">      <span class="keyword">throw</span> <span class="keyword">new</span> ExecutorException(<span class="string">&quot;Cannot lazy load property [&quot;</span> + <span class="built_in">this</span>.property</span><br><span class="line">              + <span class="string">&quot;] of deserialized object [&quot;</span> + userObject.getClass()</span><br><span class="line">              + <span class="string">&quot;] because configuration does not contain statement [&quot;</span></span><br><span class="line">              + <span class="built_in">this</span>.mappedStatement + <span class="string">&quot;]&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">this</span>.metaResultObject = config.newMetaObject(userObject);</span><br><span class="line">    <span class="built_in">this</span>.resultLoader = <span class="keyword">new</span> ResultLoader(config, <span class="keyword">new</span> ClosedExecutor(), ms, <span class="built_in">this</span>.mappedParameter,</span><br><span class="line">            metaResultObject.getSetterType(<span class="built_in">this</span>.property), <span class="literal">null</span>, <span class="literal">null</span>);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/* We are using a new executor because we may be (and likely are) on a new thread</span></span><br><span class="line"><span class="comment">   * and executors aren&#x27;t thread safe. (Is this sufficient?)</span></span><br><span class="line"><span class="comment">   *</span></span><br><span class="line"><span class="comment">   * A better approach would be making executors thread safe. */</span></span><br><span class="line">  <span class="keyword">if</span> (<span class="built_in">this</span>.serializationCheck == <span class="literal">null</span>) &#123;</span><br><span class="line">    final ResultLoader old = <span class="built_in">this</span>.resultLoader;</span><br><span class="line">    <span class="built_in">this</span>.resultLoader = <span class="keyword">new</span> ResultLoader(old.configuration, <span class="keyword">new</span> ClosedExecutor(), old.mappedStatement,</span><br><span class="line">            old.parameterObject, old.targetType, old.cacheKey, old.boundSql);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="built_in">this</span>.metaResultObject.setValue(property, <span class="built_in">this</span>.resultLoader.loadResult());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>LazyLoader(ResultLoaderMap)会把load操作委托给内部类LoadPair，LoadPair又会委托给ResultLoader；<br>整个调用链其实非常长。。但逻辑并不复杂，这里抽取了一个ResultLoader Depth=2的时序图：<br><img src="http://pt1160j8s.bkt.clouddn.com/mybatis_lazyloader_resultloader_sequence.png" title="ResultLoader时序图"><br>ResultLoaderMap会判断当前线程是否是Executor的创建线程，如果不是则创建一个Executor来执行对应的Query（同样线程不安全），完成后调用extractObjectFromList将执行结果fetchInto到resultObject</p>
+<h1 id="Tips"><a href="#Tips" class="headerlink" title="Tips"></a>Tips</h1><p>其实这块内容没多复杂，但是为什么要记下来呢，因为有一个很坑的地方是这块内容如果你在IDEA进行DEBUG的话，是永远DEBUG不到你的断点里面的。因为你进行了延迟加载配置，但你在DEBUG里面Watch这个延迟加载的变量时，其实已经触发了这个变量的加载，所以你是永远也进不到这个断点里面的。由于这个原因我一度怀疑自己看错了代码。。。哈哈哈</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E6%BA%90%E7%A0%81/" rel="tag"># 源码</a>
+              <a href="/tags/Mybatis/" rel="tag"># Mybatis</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2019/06/20/LeetCode-LRU-Cache/" rel="prev" title="LeetCode--LRU Cache">
+      <i class="fa fa-chevron-left"></i> LeetCode--LRU Cache
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2019/07/04/Mybatis%E6%BA%90%E7%A0%81-%E7%BC%93%E5%AD%98%E6%A8%A1%E5%9D%97/" rel="next" title="Mybatis源码-缓存模块">
+      Mybatis源码-缓存模块 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table of Contents
+        </li>
+        <li class="sidebar-nav-overview">
+          Overview
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#Description"><span class="nav-number">1.</span> <span class="nav-text">Description</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#Source-Code"><span class="nav-number">2.</span> <span class="nav-text">Source Code</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#DEBUG"><span class="nav-number">2.1.</span> <span class="nav-text">DEBUG</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Code-Analysis"><span class="nav-number">2.2.</span> <span class="nav-text">Code Analysis</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#Tips"><span class="nav-number">3.</span> <span class="nav-text">Tips</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Roger Meng</p>
+  <div class="site-description" itemprop="description">给我点学习的动力</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">19</span>
+          <span class="site-state-item-name">posts</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">14</span>
+        <span class="site-state-item-name">tags</span>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Roger Meng</span>
+</div>
+  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a>
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
