@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="BackgroundBAT某部门，代码有年头了，基本已经到了需要彻底重构的时候，接到这个任务花了大概三周时间重构了一波底层的计算逻辑，直观上的响应时间有了非常大的提升。￼简单交代一下背景，业务相关的部分都会隐去。我们的报表展示平台会展示趋势图数据，当这份数据的时间线很长且每天的维度值很多的时候，目前的服务端响应时间非常慢，特别是当这个展示需求还有多个衍生指标（衍生指标的概念大家搞过数据应该都知道，">
+<meta property="og:type" content="article">
+<meta property="og:title" content="记一次工作中的调优经历">
+<meta property="og:url" content="http://example.com/2019/08/20/%E8%AE%B0%E4%B8%80%E6%AC%A1%E5%B7%A5%E4%BD%9C%E4%B8%AD%E7%9A%84%E8%B0%83%E4%BC%98%E7%BB%8F%E5%8E%86/index.html">
+<meta property="og:site_name" content="怒吃树的博客">
+<meta property="og:description" content="BackgroundBAT某部门，代码有年头了，基本已经到了需要彻底重构的时候，接到这个任务花了大概三周时间重构了一波底层的计算逻辑，直观上的响应时间有了非常大的提升。￼简单交代一下背景，业务相关的部分都会隐去。我们的报表展示平台会展示趋势图数据，当这份数据的时间线很长且每天的维度值很多的时候，目前的服务端响应时间非常慢，特别是当这个展示需求还有多个衍生指标（衍生指标的概念大家搞过数据应该都知道，">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_analysis_before.png">
+<meta property="og:image" content="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_datastructure.png">
+<meta property="og:image" content="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_analysis_after.png">
+<meta property="og:image" content="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_benchmark.png">
+<meta property="article:published_time" content="2019-08-20T10:25:57.000Z">
+<meta property="article:modified_time" content="2020-12-31T03:29:32.154Z">
+<meta property="article:author" content="Roger Meng">
+<meta property="article:tag" content="杂谈">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_analysis_before.png">
+
+<link rel="canonical" href="http://example.com/2019/08/20/%E8%AE%B0%E4%B8%80%E6%AC%A1%E5%B7%A5%E4%BD%9C%E4%B8%AD%E7%9A%84%E8%B0%83%E4%BC%98%E7%BB%8F%E5%8E%86/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'en'
+  };
+</script>
+
+  <title>记一次工作中的调优经历 | 怒吃树的博客</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Toggle navigation bar">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">怒吃树的博客</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">好好学习，天天向上</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>Home</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>About</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>Tags</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2019/08/20/%E8%AE%B0%E4%B8%80%E6%AC%A1%E5%B7%A5%E4%BD%9C%E4%B8%AD%E7%9A%84%E8%B0%83%E4%BC%98%E7%BB%8F%E5%8E%86/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Roger Meng">
+      <meta itemprop="description" content="一名理智的詹黑">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="怒吃树的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          记一次工作中的调优经历
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2019-08-20 18:25:57" itemprop="dateCreated datePublished" datetime="2019-08-20T18:25:57+08:00">2019-08-20</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2020-12-31 11:29:32" itemprop="dateModified" datetime="2020-12-31T11:29:32+08:00">2020-12-31</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="Background"><a href="#Background" class="headerlink" title="Background"></a>Background</h1><p>BAT某部门，代码有年头了，基本已经到了需要彻底重构的时候，接到这个任务花了大概三周时间重构了一波底层的计算逻辑，直观上的响应时间有了非常大的提升。<br>￼<br>简单交代一下背景，业务相关的部分都会隐去。<br>我们的报表展示平台会展示趋势图数据，当这份数据的时间线很长且每天的维度值很多的时候，目前的服务端响应时间非常慢，特别是当这个展示需求还有多个衍生指标（衍生指标的概念大家搞过数据应该都知道，正常的指标比如现金消费点击，衍生指标就是类似普通指标的日环比&amp;周同比&amp;七日均值&amp;占比等等）的时候，更会慢的令人发指。用缓存当然是最直观也最省事的方案，然而老板们依然非常在意未命中缓存时的响应时间，再加上目前的代码也确实有明显的问题，所以开始重构。</p>
+<h1 id="Process"><a href="#Process" class="headerlink" title="Process"></a>Process</h1><p>问题有了，目标也很明确，就是快快快，怎么快呢？当然首先要分析代码，看看到底是慢在了什么地方，哪些地方有较大的优化空间。<br>我们的服务端处理流程其实可以归纳为三个步骤：</p>
+<ol>
+<li>数据库取数据IO到内存</li>
+<li>数据加工，核心是根据基础指标计算衍生指标</li>
+<li>数据序列化成Json返回给FE展示</li>
+</ol>
+<p>我们根据不同的数据量级，对这三个步骤的响应时间进行测试分析，形成如下所示的分析结果：</p>
+<p><img src="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_analysis_before.png" alt="优化前的时间占比" title="优化前的时间占比"></p>
+<p>结果的横坐标以数据行数为单位，默认单行单指标计算5种衍生指标。我理解正常来说，丛数据库fetch数据的时间（在有连接池的情况下）速度基本是没什么太大优化空间的，瓶颈主要在计算和序列化上面。尤其是目前的代码，可以看到序列化占用了相当一大部分时间，十分不合理；此外，计算衍生指标作为在JVM内存计算的步骤，这个时间也有些过长了，主要原因在于目前的计算步骤是串行进行，不能用多线程进行并发。<br>针对计算问题，目前之所以不能并发的原因是因为我们目前采取的数据结构是基于Google的Table类型，可以理解为是两个HashMap进行的嵌套，自然线程不安全，我对这个数据结构进行了简单的转化使它能够支持并发计算：</p>
+<p><img src="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_datastructure.png" alt="模型变化" title="模型变化"></p>
+<p>不知能否表述清楚，如果我们对Table进行并发的加列操作，一定是线程不安全的，而如果我们是对固定列里面线程安全的Object（即ConcurrentHashmap）进行并发操作，这样是没有问题的。更改了数据模型后，我们就可以根据衍生指标的数量来启动对应的线程数进行并发计算。<br>关于序列化呢，其实有很多的序列化API，比如Protobuf&amp;fasterxml&amp;fastjson等等。其实光看benchmark、测试报告，相差无几，主要还是看使用者自己怎么用。我这边的优化方案只是摒弃掉以前的序列化方法，换成了fasterxml基于Streaming的API，原因很简单，因为它的Introduction里面写着Streaming API有Best Efficiency，然后我就试了一下，真的快了很多：）我觉得多看官网真的收获很大，国内的许多博客一是技术都是比较老的东西，二是讲的内容真的比较浅。<br>优化过后的响应时间占比看起来就比较合理了，首先序列化占比非常低，其次内存计算的时间随着数据量的膨胀逐渐占比升高。<br><img src="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_analysis_after.png" alt="优化后的时间占比" title="优化后的时间占比"></p>
+<p><img src="https://myblog-1259548259.cos.ap-beijing.myqcloud.com/be_benchmark.png" title="benchmark"></p>
+<p>benchmark是取的50次的平均值（排除冷启动），可以看到性能提升还是非常明显，此外内存的消耗也被压了很多，这个属于前人的代码问题吧，有比较多无用的拷贝。此外还优化了一波数据库的链接数和代码的可读性，对自己这波重构还是比较满意的。<br>后续先给自己立几个flag吧，一个是想研究下docker的资源隔离是如何实现的；二是之前看过ConcurrentHashMap的代码，感觉很屌，但感觉还需要写点东西加深下理解。END</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E6%9D%82%E8%B0%88/" rel="tag"># 杂谈</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2019/08/19/%E5%AD%A6%E4%B9%A0%E4%B8%80%E6%B3%A2docker/" rel="prev" title="学习一波docker">
+      <i class="fa fa-chevron-left"></i> 学习一波docker
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2019/08/26/ConcurrentHashMap/" rel="next" title="ConcurrentHashMap">
+      ConcurrentHashMap <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table of Contents
+        </li>
+        <li class="sidebar-nav-overview">
+          Overview
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#Background"><span class="nav-number">1.</span> <span class="nav-text">Background</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#Process"><span class="nav-number">2.</span> <span class="nav-text">Process</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Roger Meng</p>
+  <div class="site-description" itemprop="description">一名理智的詹黑</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">23</span>
+          <span class="site-state-item-name">posts</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">15</span>
+        <span class="site-state-item-name">tags</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Roger Meng</span>
+</div>
+  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a>
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+  
+
+</body>
+</html>
