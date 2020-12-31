@@ -1,5 +1,5 @@
 ---
-title: Leetcode-Go-Reverse Integer
+title: Leetcode-Go-7-Reverse-Integer
 date: 2020-02-26 13:40:02
 tags:
 - 算法
@@ -101,7 +101,7 @@ func Test_Problem7(t *testing.T) {
 ```
 testing参考的git上这个项目：[https://github.com/halfrost/LeetCode-Go][2]，对Go和力扣有兴趣的也可以看这个项目，带解析和测试用例。
 目前对Go的测试有些简单了解：
-- 文件名以_test.go结尾_
+- 文件名以\_test.go结尾\_
 - 引入testing包，是Go的基础测试工具
 - 运行go test，编译执行当前目录下所有test.go测试文件
 - 函数名以Test开头，如果是benchmark以Benchmark开头

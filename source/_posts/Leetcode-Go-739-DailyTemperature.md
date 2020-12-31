@@ -1,5 +1,5 @@
 ---
-title: Leetcode-Go-739-DailyTemperature
+title: Leetcode-Go-739-Daily-Temperature
 date: 2020-10-29 14:07:30
 tags:
 - 算法
@@ -45,4 +45,5 @@ func dailyTemperatures(T []int) []int {
 ```
 # 思考
 这是一道很典型的利用单调栈特性的题目，感觉自己每次遇到单调栈题目时总是会卡住没有思路，留一个todo：总结一下单调栈和它的应用场景。
+
 

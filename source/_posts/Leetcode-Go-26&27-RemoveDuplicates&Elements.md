@@ -1,5 +1,5 @@
 ---
-title: Leetcode-Go-26&27-RemoveDuplicates&Elements
+title: Leetcode-Go-26&27-Remove-Duplicates&Elements
 date: 2020-03-04 14:41:22
 tags: 
 - 算法
@@ -113,4 +113,5 @@ func removeElement(nums []int, val int) int {
 	return j + 1
 }
 ```
+
 

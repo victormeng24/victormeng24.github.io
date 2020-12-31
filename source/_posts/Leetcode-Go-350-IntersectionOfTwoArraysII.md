@@ -1,5 +1,5 @@
 ---
-title: Leetcode-Go-350-IntersectionOfTwoArraysII
+title: Leetcode-Go-350-Intersection-Of-Two-Arrays-II
 date: 2020-11-05 15:58:00
 tags:
 - 算法
